@@ -895,7 +895,7 @@ def get_nvcc_cuda_version() -> Version:
     return nvcc_cuda_version
 
 
-def _run_git_command(*args: str) -> str | None:
+def _try_run_git_command(*args: str) -> str | None:
     try:
         return subprocess.check_output(
             ["git", *args],
@@ -954,7 +954,7 @@ def _write_version_file(version: str) -> None:
 
 
 def _get_version_from_git() -> str | None:
-    describe = _run_git_command(
+    describe = _try_run_git_command(
         "describe",
         "--tags",
         "--long",
@@ -965,10 +965,9 @@ def _get_version_from_git() -> str | None:
         "[0-9]*",
     )
     if describe:
-        # Expected formats from `git describe --tags --long --dirty` include
-        # `v1.2.3-0-gabc1234` and `v1.2.3-10-gabc1234-dirty`; the capture
-        # groups extract the normalized tag, commit distance, git SHA, and
-        # optional dirty marker.
+        # Parse `git describe --tags --long --dirty` outputs such as
+        # `v1.2.3-0-gabc1234` or `1.2.3-10-gdef5678-dirty`, capturing the
+        # normalized tag, commit distance, git SHA, and optional dirty marker.
         match = re.fullmatch(
             r"v?(?P<tag>\d+\.\d+\.\d+)-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+)"
             r"(?P<dirty>-dirty)?",
@@ -989,7 +988,7 @@ def _get_version_from_git() -> str | None:
                 version += "+" + ".".join(local_parts)
             return version
 
-    revision = _run_git_command("rev-parse", "--short", "HEAD")
+    revision = _try_run_git_command("rev-parse", "--short", "HEAD")
     if revision:
         return f"0.0.0.dev0+g{revision}"
 
@@ -1011,7 +1010,8 @@ def resolve_version() -> str:
             return version
 
     raise RuntimeError(
-        "Failed to determine the vLLM version. Set VLLM_VERSION_OVERRIDE "
+        "Failed to determine the vLLM version. Set the "
+        "VLLM_VERSION_OVERRIDE environment variable "
         "or build from a git checkout with tags available, or from a source "
         "distribution that already contains the generated vllm/_version.py."
     )
