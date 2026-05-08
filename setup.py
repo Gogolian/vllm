@@ -961,6 +961,8 @@ def _get_version_from_git() -> str | None:
         "[0-9]*",
     )
     if describe:
+        # Expected formats from `git describe --tags --long --dirty` include
+        # `v1.2.3-0-gabc1234` and `v1.2.3-10-gabc1234-dirty`.
         match = re.fullmatch(
             r"v?(?P<tag>\d+\.\d+\.\d+)-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+)"
             r"(?P<dirty>-dirty)?",
@@ -994,6 +996,8 @@ def get_base_version() -> str:
         _write_version_file(env_version)
         return env_version
 
+    # Prefer git metadata in a checkout so the embedded file cannot go stale
+    # across branch switches; fall back to the embedded file for sdists.
     resolvers = (
         (_get_version_from_git, _read_embedded_version)
         if (ROOT_DIR / ".git").exists()
