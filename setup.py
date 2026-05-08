@@ -18,7 +18,6 @@ import torch
 from packaging.version import Version, parse
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
-from setuptools_scm import get_version
 from torch.utils.cpp_extension import CUDA_HOME, ROCM_HOME
 
 
@@ -31,6 +30,7 @@ def load_module_from_path(module_name, path):
 
 
 ROOT_DIR = Path(__file__).parent
+VERSION_FILE = ROOT_DIR / "vllm" / "_version.py"
 logger = logging.getLogger(__name__)
 
 # cannot import envs directly because it depends on vllm,
@@ -895,15 +895,130 @@ def get_nvcc_cuda_version() -> Version:
     return nvcc_cuda_version
 
 
+def _run_git_command(*args: str) -> str | None:
+    try:
+        return subprocess.check_output(
+            ["git", *args],
+            cwd=ROOT_DIR,
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return None
+
+
+def _read_embedded_version() -> str | None:
+    if not VERSION_FILE.exists():
+        return None
+
+    match = re.search(
+        r'^__version__ = ["\']([^"\']+)["\']',
+        VERSION_FILE.read_text(),
+        re.MULTILINE,
+    )
+    return match.group(1) if match else None
+
+
+def _version_to_tuple(version: str) -> tuple[object, ...]:
+    parsed = Version(version)
+    version_tuple: list[object] = list(parsed.release)
+
+    if parsed.pre is not None:
+        version_tuple.append("".join(map(str, parsed.pre)))
+    if parsed.post is not None:
+        version_tuple.append(f"post{parsed.post}")
+    if parsed.dev is not None:
+        version_tuple.append(f"dev{parsed.dev}")
+    if parsed.local is not None:
+        version_tuple.extend(parsed.local.split("."))
+
+    return tuple(version_tuple)
+
+
+def _write_version_file(version: str) -> None:
+    VERSION_FILE.write_text(
+        "\n".join(
+            [
+                "# SPDX-License-Identifier: Apache-2.0",
+                "# SPDX-FileCopyrightText: Copyright contributors to the vLLM project",
+                f'__version__ = "{version}"',
+                f"__version_tuple__ = {_version_to_tuple(version)!r}",
+                "",
+            ]
+        )
+    )
+
+
+def _get_version_from_git() -> str | None:
+    describe = _run_git_command(
+        "describe",
+        "--tags",
+        "--long",
+        "--dirty",
+        "--match",
+        "v[0-9]*",
+        "--match",
+        "[0-9]*",
+    )
+    if describe:
+        match = re.fullmatch(
+            r"v?(?P<tag>\d+\.\d+\.\d+)-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+)"
+            r"(?P<dirty>-dirty)?",
+            describe,
+        )
+        if match:
+            tag = match.group("tag")
+            distance = int(match.group("distance"))
+            local_parts = []
+            if distance == 0:
+                version = tag
+            else:
+                local_parts.append(f"g{match.group('sha')}")
+                version = f"{tag}.dev{distance}"
+            if match.group("dirty"):
+                local_parts.append("dirty")
+            if local_parts:
+                version += "+" + ".".join(local_parts)
+            return version
+
+    revision = _run_git_command("rev-parse", "--short", "HEAD")
+    if revision:
+        return f"0.0.0.dev0+g{revision}"
+
+    return None
+
+
+def get_base_version() -> str:
+    if env_version := os.getenv("VLLM_VERSION_OVERRIDE"):
+        print(f"Overriding VLLM version with {env_version} from VLLM_VERSION_OVERRIDE")
+        _write_version_file(env_version)
+        return env_version
+
+    resolvers = (
+        (_get_version_from_git, _read_embedded_version)
+        if (ROOT_DIR / ".git").exists()
+        else (_read_embedded_version, _get_version_from_git)
+    )
+    for resolver in resolvers:
+        version = resolver()
+        if version is not None:
+            _write_version_file(version)
+            return version
+
+    raise RuntimeError(
+        "Failed to determine the vLLM version. Set VLLM_VERSION_OVERRIDE "
+        "or build from a git checkout or source tree containing "
+        "vllm/_version.py."
+    )
+
+
 def get_vllm_version() -> str:
     # Allow overriding the version. This is useful to build platform-specific
     # wheels (e.g. CPU, TPU) without modifying the source.
-    if env_version := os.getenv("VLLM_VERSION_OVERRIDE"):
-        print(f"Overriding VLLM version with {env_version} from VLLM_VERSION_OVERRIDE")
-        os.environ["SETUPTOOLS_SCM_PRETEND_VERSION"] = env_version
-        return get_version(write_to="vllm/_version.py")
+    if os.getenv("VLLM_VERSION_OVERRIDE"):
+        return get_base_version()
 
-    version = get_version(write_to="vllm/_version.py")
+    version = get_base_version()
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
     if _no_device():

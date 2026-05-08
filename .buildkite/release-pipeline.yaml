@@ -639,9 +639,6 @@ steps:
         echo ""
         echo "Recent tags (pointing to commits near HEAD):"
         git tag -l --sort=-creatordate | head -5
-        echo "setuptools_scm version detection:"
-        pip install -q setuptools_scm 2>/dev/null || true
-        python3 -c "import setuptools_scm; print('  Detected version:', setuptools_scm.get_version())" 2>/dev/null || echo "  (setuptools_scm not available in this environment)"
         echo "========================================"
 
         # Download wheel artifacts from current build
