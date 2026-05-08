@@ -911,11 +911,12 @@ def _read_embedded_version() -> str | None:
     if not VERSION_FILE.exists():
         return None
 
-    match = re.search(
-        r'^__version__ = ["\']([^"\']+)["\']',
-        VERSION_FILE.read_text(),
-        re.MULTILINE,
-    )
+    try:
+        contents = VERSION_FILE.read_text()
+    except OSError:
+        return None
+
+    match = re.search(r'^__version__ = ["\']([^"\']+)["\']', contents, re.MULTILINE)
     return match.group(1) if match else None
 
 
@@ -965,7 +966,9 @@ def _get_version_from_git() -> str | None:
     )
     if describe:
         # Expected formats from `git describe --tags --long --dirty` include
-        # `v1.2.3-0-gabc1234` and `v1.2.3-10-gabc1234-dirty`.
+        # `v1.2.3-0-gabc1234` and `v1.2.3-10-gabc1234-dirty`; the capture
+        # groups extract the normalized tag, commit distance, git SHA, and
+        # optional dirty marker.
         match = re.fullmatch(
             r"v?(?P<tag>\d+\.\d+\.\d+)-(?P<distance>\d+)-g(?P<sha>[0-9a-f]+)"
             r"(?P<dirty>-dirty)?",
@@ -993,7 +996,7 @@ def _get_version_from_git() -> str | None:
     return None
 
 
-def get_base_version() -> str:
+def resolve_version() -> str:
     # Prefer git metadata in a checkout so the embedded file cannot go stale
     # across branch switches; fall back to the embedded file for sdists.
     resolvers = (
@@ -1022,7 +1025,7 @@ def get_vllm_version() -> str:
         _write_version_file(env_version)
         return env_version
 
-    version = get_base_version()
+    version = resolve_version()
     sep = "+" if "+" not in version else "."  # dev versions might contain +
 
     if _no_device():
