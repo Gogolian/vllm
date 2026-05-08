@@ -903,7 +903,7 @@ def _run_git_command(*args: str) -> str | None:
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
-    except Exception:
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
         return None
 
 
@@ -991,11 +991,6 @@ def _get_version_from_git() -> str | None:
 
 
 def get_base_version() -> str:
-    if env_version := os.getenv("VLLM_VERSION_OVERRIDE"):
-        print(f"Overriding VLLM version with {env_version} from VLLM_VERSION_OVERRIDE")
-        _write_version_file(env_version)
-        return env_version
-
     # Prefer git metadata in a checkout so the embedded file cannot go stale
     # across branch switches; fall back to the embedded file for sdists.
     resolvers = (
@@ -1019,8 +1014,10 @@ def get_base_version() -> str:
 def get_vllm_version() -> str:
     # Allow overriding the version. This is useful to build platform-specific
     # wheels (e.g. CPU, TPU) without modifying the source.
-    if os.getenv("VLLM_VERSION_OVERRIDE"):
-        return get_base_version()
+    if env_version := os.getenv("VLLM_VERSION_OVERRIDE"):
+        print(f"Overriding VLLM version with {env_version} from VLLM_VERSION_OVERRIDE")
+        _write_version_file(env_version)
+        return env_version
 
     version = get_base_version()
     sep = "+" if "+" not in version else "."  # dev versions might contain +
