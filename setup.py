@@ -936,17 +936,20 @@ def _version_to_tuple(version: str) -> tuple[object, ...]:
 
 
 def _write_version_file(version: str) -> None:
-    VERSION_FILE.write_text(
-        "\n".join(
-            [
-                "# SPDX-License-Identifier: Apache-2.0",
-                "# SPDX-FileCopyrightText: Copyright contributors to the vLLM project",
-                f'__version__ = "{version}"',
-                f"__version_tuple__ = {_version_to_tuple(version)!r}",
-                "",
-            ]
+    try:
+        VERSION_FILE.write_text(
+            "\n".join(
+                [
+                    "# SPDX-License-Identifier: Apache-2.0",
+                    "# SPDX-FileCopyrightText: Copyright contributors to the vLLM project",
+                    f'__version__ = "{version}"',
+                    f"__version_tuple__ = {_version_to_tuple(version)!r}",
+                    "",
+                ]
+            )
         )
-    )
+    except OSError as exc:
+        raise RuntimeError(f"Failed to write version file at {VERSION_FILE}") from exc
 
 
 def _get_version_from_git() -> str | None:
@@ -1006,8 +1009,8 @@ def get_base_version() -> str:
 
     raise RuntimeError(
         "Failed to determine the vLLM version. Set VLLM_VERSION_OVERRIDE "
-        "or build from a git checkout or source tree containing "
-        "vllm/_version.py."
+        "or build from a git checkout with tags available, or from a source "
+        "distribution that already contains the generated vllm/_version.py."
     )
 
 
