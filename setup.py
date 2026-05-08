@@ -988,6 +988,8 @@ def _get_version_from_git() -> str | None:
                 version += "+" + ".".join(local_parts)
             return version
 
+    # Untagged or shallow checkouts can still embed a deterministic dev version
+    # as a last resort so local builds do not fail outright.
     revision = _try_run_git_command("rev-parse", "--short", "HEAD")
     if revision:
         return f"0.0.0.dev0+g{revision}"
@@ -1011,7 +1013,8 @@ def resolve_version() -> str:
 
     raise RuntimeError(
         "Failed to determine the vLLM version. Set the "
-        "VLLM_VERSION_OVERRIDE environment variable "
+        "VLLM_VERSION_OVERRIDE environment variable to a valid PEP 440 "
+        "version such as 1.2.3 "
         "or build from a git checkout with tags available, or from a source "
         "distribution that already contains the generated vllm/_version.py."
     )
